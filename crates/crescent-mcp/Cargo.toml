@@ -1,0 +1,18 @@
+[package]
+name = "crescent-mcp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "MCP server for Crescent — Playwright for terminals"
+
+[dependencies]
+crescent = { path = "../crescent" }
+rmcp = { version = "0.17", features = ["server", "transport-io"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-std"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+schemars = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+anyhow = "1"
+base64 = "0.22"
