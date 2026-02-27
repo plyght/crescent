@@ -1,174 +1,108 @@
-# Crescent
+<div align="center">
+    <h3>Crescent</h3>
+    <p>Playwright for terminals — programmatic terminal control and inspection for AI agents</p>
+    <br/>
+    <br/>
+</div>
 
-**Playwright for terminals.** An MCP server that gives AI agents semantic access to terminal sessions — structured grid state, PNG screenshots, and input injection (keyboard, mouse, scroll).
+A Rust library and MCP server that gives AI agents full semantic access to terminal sessions. Launch processes, send keystrokes and mouse events, read structured grid state, take screenshots, and wait for output patterns — all through a clean async API or the Model Context Protocol.
 
-## Why
+## Features
 
-AI agents interact with terminals via raw stdin/stdout text streams. When a TUI is running (btop, lazygit, vim, etc.), the AI gets a wall of ANSI escape sequences with no understanding of what's visually on screen. Crescent solves this by running a headless terminal emulator that exposes both **structured grid data** (cheap, fast, searchable) and **visual screenshots** (for spatial reasoning) — plus full input injection.
+- **Session Management**: Launch, resize, and close multiple concurrent terminal sessions backed by real PTYs
+- **Structured Grid Inspection**: Read the terminal as a 2D grid of cells with characters, colors, and attributes (bold, italic, underline)
+- **Screenshot Rendering**: Generate PNG screenshots with automatic system font detection
+- **Full Input Support**: Type text, send keys with modifiers (ctrl/alt/shift), click (left/middle/right), and scroll
+- **Pattern Waiting**: Async wait for regex patterns to appear in terminal output with configurable timeouts
+- **MCP Server**: 10-tool MCP server over stdio for direct AI agent integration
+- **Cross-Platform**: Works on macOS and Linux via `portable-pty`
+
+## Install
+
+```bash
+# Build from source
+git clone https://github.com/plyght/crescent.git
+cd crescent
+cargo build --release
+```
+
+The MCP server binary will be at `target/release/crescent-mcp`.
+
+## Usage
+
+### As an MCP Server
+
+Crescent exposes 10 tools over stdio transport. Point your MCP client at the binary:
+
+```json
+{
+  "command": "/path/to/crescent-mcp"
+}
+```
+
+Tools:
+
+| Tool | Description |
+|------|-------------|
+| `terminal_launch` | Start a session (command, cols, rows) |
+| `terminal_type` | Type UTF-8 text into a session |
+| `terminal_key` | Send a key press with optional modifiers |
+| `terminal_click` | Send a mouse click at row/col |
+| `terminal_scroll` | Scroll up or down by N lines |
+| `terminal_resize` | Resize a session |
+| `terminal_grid` | Get structured cell data, cursor, and dimensions |
+| `terminal_screenshot` | Capture a base64-encoded PNG |
+| `terminal_wait_for` | Block until a regex pattern appears |
+| `terminal_close` | End a session |
+
+### As a Library
+
+```rust
+use crescent::{Session, SessionManager};
+
+let manager = SessionManager::new();
+let id = manager.launch("bash", 80, 24).await?;
+let session = manager.get(&id).await?;
+
+session.type_text("echo hello\n")?;
+session.wait_for("hello", Some(5000)).await?;
+
+let grid = session.grid()?;
+let png = session.screenshot(&RendererConfig::default())?;
+```
+
+## Configuration
+
+| Variable | Purpose |
+|----------|---------|
+| `CRESCENT_FONT` | Path to a custom monospace font (.ttf/.otf). Falls back to system fonts (Menlo, SF Mono, DejaVu Sans Mono, etc.) |
+| `RUST_LOG` | Controls log verbosity for the MCP server (default: `info`, logs to stderr) |
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────┐
-│           MCP Server (rmcp)         │
-│  10 tools over stdio JSON-RPC       │
-├─────────────────────────────────────┤
-│         crescent library            │
-│  ┌──────────┐  ┌────────────────┐   │
-│  │ SessionMgr│  │  Per-Session   │   │
-│  │ HashMap   │  │ ┌─PTY─────┐   │   │
-│  │ <id,      │──│ │portable │   │   │
-│  │  Session> │  │ │  -pty   │   │   │
-│  └──────────┘  │ └────┬────┘   │   │
-│                │ ┌────▼────┐   │   │
-│                │ │  vt100  │   │   │
-│                │ │ Parser  │   │   │
-│                │ └────┬────┘   │   │
-│                │ ┌────▼────┐   │   │
-│                │ │  Grid   │   │   │
-│                │ │ + Render│   │   │
-│                │ └─────────┘   │   │
-│                └────────────────┘   │
-└─────────────────────────────────────┘
+crates/
+  crescent/          Core library
+    src/
+      session.rs     PTY lifecycle, background reader, session manager
+      grid.rs        2D grid extraction from vt100 screen state
+      input.rs       Key/mouse/scroll encoding to escape sequences
+      renderer.rs    PNG rendering with system font detection
+      wait.rs        Async regex pattern polling
+  crescent-mcp/      MCP server
+    src/
+      main.rs        Tool definitions, stdio transport, session routing
 ```
 
-## Tools
-
-| Tool | Description |
-|------|-------------|
-| `terminal_launch` | Spawn a command in a new PTY session |
-| `terminal_screenshot` | Capture a PNG screenshot (base64) |
-| `terminal_grid` | Get structured cell grid + plain text |
-| `terminal_click` | SGR mouse click at (row, col) |
-| `terminal_type` | Type raw text into the terminal |
-| `terminal_key` | Send a named key (Enter, Up, Ctrl+C, F1, etc.) |
-| `terminal_resize` | Resize the terminal dimensions |
-| `terminal_scroll` | Scroll up/down by N lines |
-| `terminal_wait_for` | Wait for a regex pattern in grid text |
-| `terminal_close` | Close a session and clean up |
-
-## Quick Start
-
-### Build
+## Development
 
 ```bash
-cargo build --release
+cargo build
+cargo test
 ```
 
-The binary is at `target/release/crescent-mcp`.
-
-### Add to Cursor
-
-Add to your Cursor MCP config (`.cursor/mcp.json` in your project or `~/.cursor/mcp.json` globally):
-
-```json
-{
-  "mcpServers": {
-    "crescent": {
-      "command": "/absolute/path/to/crescent-mcp"
-    }
-  }
-}
-```
-
-Or using cargo:
-
-```json
-{
-  "mcpServers": {
-    "crescent": {
-      "command": "cargo",
-      "args": ["run", "--release", "-p", "crescent-mcp", "--manifest-path", "/absolute/path/to/crescent/Cargo.toml"]
-    }
-  }
-}
-```
-
-### Font Configuration
-
-Screenshots require a monospace font. Crescent auto-detects system fonts:
-
-- **macOS**: Menlo, SF Mono
-- **Linux**: DejaVu Sans Mono, Liberation Mono, Ubuntu Mono
-
-Override with the `CRESCENT_FONT` environment variable:
-
-```json
-{
-  "mcpServers": {
-    "crescent": {
-      "command": "/path/to/crescent-mcp",
-      "env": {
-        "CRESCENT_FONT": "/path/to/MyFont.ttf"
-      }
-    }
-  }
-}
-```
-
-## Usage Examples
-
-### Launch a shell and run a command
-
-```
-terminal_launch(command: "bash")          → session_id
-terminal_type(session_id, text: "ls -la\n")
-terminal_wait_for(session_id, pattern: "\\$")  → wait for prompt
-terminal_grid(session_id)                 → structured output
-```
-
-### Interact with a TUI
-
-```
-terminal_launch(command: "btop", cols: 120, rows: 40)
-terminal_wait_for(session_id, pattern: "CPU")
-terminal_screenshot(session_id)           → PNG of btop
-terminal_key(session_id, key: "q")        → quit btop
-```
-
-### Mouse interaction
-
-```
-terminal_launch(command: "lazygit")
-terminal_wait_for(session_id, pattern: ".*")
-terminal_click(session_id, row: 5, col: 10, button: "left")
-terminal_scroll(session_id, direction: "down", amount: 3)
-```
-
-## Project Structure
-
-```
-crescent/
-├── Cargo.toml                  # workspace
-├── crates/
-│   ├── crescent/               # core library
-│   │   └── src/
-│   │       ├── lib.rs
-│   │       ├── grid.rs         # Cell, Grid, color conversion
-│   │       ├── input.rs        # key/mouse/scroll escape sequences
-│   │       ├── renderer.rs     # Grid → PNG
-│   │       ├── session.rs      # Session, SessionManager
-│   │       └── wait.rs         # wait_for polling
-│   └── crescent-mcp/           # MCP server binary
-│       └── src/
-│           └── main.rs
-└── README.md
-```
-
-## Design Decisions
-
-- **vt100 over alacritty_terminal**: Lighter, sufficient for most TUIs. Can swap later if needed.
-- **Multi-session from start**: Every tool takes a `session_id`. No extra complexity vs single-session.
-- **Grid + screenshots**: Dual-modality — AI gets cheap text data AND visual screenshots when spatial reasoning is needed.
-- **Blocking PTY I/O in background threads**: `portable-pty` is synchronous; a dedicated reader thread feeds the vt100 parser continuously.
-
-## Limitations (MVP)
-
-- macOS + Linux only (no Windows)
-- Mouse click sends SGR encoding regardless of whether the TUI has enabled mouse support
-- `wait_for` uses regex pattern matching only (no output-idle heuristic yet)
-- No tmux control mode integration
+Requires Rust 1.70+. Key dependencies: portable-pty, vt100, rmcp, ab_glyph, image, tokio, ratatui.
 
 ## License
 
-MIT
+MIT License
