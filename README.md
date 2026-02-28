@@ -58,10 +58,10 @@ Tools:
 ### As a Library
 
 ```rust
-use crescent::{Session, SessionManager};
+use crescent::{Session, SessionManager, RendererConfig};
 
 let manager = SessionManager::new();
-let id = manager.launch("bash", 80, 24).await?;
+let id = manager.launch("zsh", 80, 24).await?;
 let session = manager.get(&id).await?;
 
 session.type_text("echo hello\n")?;

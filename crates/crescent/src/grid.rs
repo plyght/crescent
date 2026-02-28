@@ -59,9 +59,16 @@ impl Grid {
             if i > 0 {
                 out.push('\n');
             }
-            let line: String = row.iter().map(|c| {
-                if c.ch.is_empty() { ' ' } else { c.ch.chars().next().unwrap_or(' ') }
-            }).collect();
+            let line: String = row
+                .iter()
+                .map(|c| {
+                    if c.ch.is_empty() {
+                        ' '
+                    } else {
+                        c.ch.chars().next().unwrap_or(' ')
+                    }
+                })
+                .collect();
             out.push_str(line.trim_end());
         }
         out
@@ -108,7 +115,11 @@ fn idx_to_rgb(idx: u8) -> Rgb {
 pub fn vt100_color_to_rgb(color: vt100::Color, is_fg: bool) -> Rgb {
     match color {
         vt100::Color::Default => {
-            if is_fg { Rgb::WHITE } else { Rgb::BLACK }
+            if is_fg {
+                Rgb::WHITE
+            } else {
+                Rgb::BLACK
+            }
         }
         vt100::Color::Idx(idx) => idx_to_rgb(idx),
         vt100::Color::Rgb(r, g, b) => Rgb::new(r, g, b),
@@ -159,7 +170,10 @@ pub fn extract_grid(screen: &vt100::Screen) -> Grid {
 
     Grid {
         cells,
-        cursor: CursorPosition { row: cursor_row, col: cursor_col },
+        cursor: CursorPosition {
+            row: cursor_row,
+            col: cursor_col,
+        },
         size: GridSize { rows, cols },
     }
 }

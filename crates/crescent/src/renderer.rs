@@ -37,15 +37,12 @@ fn load_font_data() -> Result<Vec<u8>> {
         return Ok(data.clone());
     }
     let data = if let Ok(custom) = std::env::var("CRESCENT_FONT") {
-        std::fs::read(&custom)
-            .with_context(|| format!("failed to read font at {custom}"))?
+        std::fs::read(&custom).with_context(|| format!("failed to read font at {custom}"))?
     } else if let Some(path) = find_system_font() {
         std::fs::read(&path)
             .with_context(|| format!("failed to read font at {}", path.display()))?
     } else {
-        anyhow::bail!(
-            "no monospace font found. Set CRESCENT_FONT env var to a .ttf/.otf path"
-        )
+        anyhow::bail!("no monospace font found. Set CRESCENT_FONT env var to a .ttf/.otf path")
     };
     *guard = Some(data.clone());
     Ok(data)
@@ -102,10 +99,8 @@ pub fn render_grid_to_png(grid: &Grid, config: &RendererConfig) -> Result<Vec<u8
             }
 
             let glyph_id = scaled.glyph_id(ch);
-            let glyph = glyph_id.with_scale_and_position(
-                scale,
-                point(cx as f32, cy as f32 + ascent),
-            );
+            let glyph =
+                glyph_id.with_scale_and_position(scale, point(cx as f32, cy as f32 + ascent));
 
             if let Some(outlined) = font.outline_glyph(glyph) {
                 let bounds = outlined.px_bounds();

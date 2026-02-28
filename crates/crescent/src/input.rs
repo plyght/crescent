@@ -132,9 +132,7 @@ pub fn parse_key(name: &str) -> Option<Key> {
         "insert" => Some(Key::Insert),
         "delete" | "del" => Some(Key::Delete),
         "space" => Some(Key::Char(' ')),
-        s if s.starts_with('f') => {
-            s[1..].parse::<u8>().ok().map(Key::F)
-        }
+        s if s.starts_with('f') => s[1..].parse::<u8>().ok().map(Key::F),
         s if s.len() == 1 => Some(Key::Char(s.chars().next().unwrap())),
         _ => None,
     }

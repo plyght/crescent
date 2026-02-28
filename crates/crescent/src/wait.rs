@@ -14,8 +14,7 @@ pub async fn wait_for_pattern<F>(
 where
     F: FnMut() -> anyhow::Result<Grid>,
 {
-    let re = Regex::new(pattern)
-        .map_err(|e| anyhow::anyhow!("invalid regex pattern: {e}"))?;
+    let re = Regex::new(pattern).map_err(|e| anyhow::anyhow!("invalid regex pattern: {e}"))?;
 
     let timeout = timeout_ms
         .map(Duration::from_millis)

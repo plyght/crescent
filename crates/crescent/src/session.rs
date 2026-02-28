@@ -1,7 +1,5 @@
 use crate::grid::{self, Grid};
-use crate::input::{
-    self, Key, Modifiers, MouseButton, ScrollDirection,
-};
+use crate::input::{self, Key, Modifiers, MouseButton, ScrollDirection};
 use crate::renderer::{self, RendererConfig};
 use crate::wait;
 use anyhow::{Context, Result};
@@ -25,12 +23,18 @@ pub struct Session {
 
 impl Session {
     pub fn grid(&self) -> Result<Grid> {
-        let parser = self.parser.read().map_err(|e| anyhow::anyhow!("lock poisoned: {e}"))?;
+        let parser = self
+            .parser
+            .read()
+            .map_err(|e| anyhow::anyhow!("lock poisoned: {e}"))?;
         Ok(grid::extract_grid(parser.screen()))
     }
 
     pub fn write_bytes(&self, data: &[u8]) -> Result<()> {
-        let mut w = self.writer.lock().map_err(|e| anyhow::anyhow!("lock poisoned: {e}"))?;
+        let mut w = self
+            .writer
+            .lock()
+            .map_err(|e| anyhow::anyhow!("lock poisoned: {e}"))?;
         w.write_all(data).context("failed to write to PTY")?;
         w.flush().context("failed to flush PTY")
     }
@@ -67,12 +71,14 @@ impl Session {
 
     pub fn resize(&self, cols: u16, rows: u16) -> Result<()> {
         let master = self.master.lock().map_err(|e| anyhow::anyhow!("{e}"))?;
-        master.resize(PtySize {
-            rows,
-            cols,
-            pixel_width: 0,
-            pixel_height: 0,
-        }).context("failed to resize PTY")?;
+        master
+            .resize(PtySize {
+                rows,
+                cols,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .context("failed to resize PTY")?;
         let mut parser = self.parser.write().map_err(|e| anyhow::anyhow!("{e}"))?;
         parser.screen_mut().set_size(rows, cols);
         Ok(())
@@ -119,8 +125,7 @@ impl SessionManager {
             })
             .context("failed to open PTY")?;
 
-        let args = shell_words::split(command)
-            .context("failed to parse command")?;
+        let args = shell_words::split(command).context("failed to parse command")?;
         let mut cmd = if args.is_empty() {
             CommandBuilder::new_default_prog()
         } else {
@@ -132,11 +137,20 @@ impl SessionManager {
         };
         cmd.env("TERM", "xterm-256color");
 
-        let child = pair.slave.spawn_command(cmd).context("failed to spawn command")?;
+        let child = pair
+            .slave
+            .spawn_command(cmd)
+            .context("failed to spawn command")?;
         drop(pair.slave);
 
-        let reader = pair.master.try_clone_reader().context("failed to clone PTY reader")?;
-        let writer = pair.master.take_writer().context("failed to take PTY writer")?;
+        let reader = pair
+            .master
+            .try_clone_reader()
+            .context("failed to clone PTY reader")?;
+        let writer = pair
+            .master
+            .take_writer()
+            .context("failed to take PTY writer")?;
 
         let id = Uuid::new_v4().to_string();
         let parser = Arc::new(RwLock::new(vt100::Parser::new(rows, cols, 1000)));

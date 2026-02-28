@@ -16,7 +16,9 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct LaunchParams {
-    #[schemars(description = "The command to run (e.g. \"bash\", \"btop\", \"lazygit\")")]
+    #[schemars(
+        description = "The command to run (e.g. \"zsh\", \"python3\", \"btop\", \"lazygit\"). Uses the system default shell if empty."
+    )]
     command: String,
     #[schemars(description = "Terminal width in columns (default 80)")]
     cols: Option<u16>,
@@ -38,7 +40,9 @@ struct ClickParams {
     row: u16,
     #[schemars(description = "Column (0-indexed)")]
     col: u16,
-    #[schemars(description = "Mouse button: \"left\", \"middle\", or \"right\" (default \"left\")")]
+    #[schemars(
+        description = "Mouse button: \"left\", \"middle\", or \"right\" (default \"left\")"
+    )]
     button: Option<String>,
 }
 
@@ -54,7 +58,9 @@ struct TypeParams {
 struct KeyParams {
     #[schemars(description = "The session ID")]
     session_id: String,
-    #[schemars(description = "Key name: Enter, Tab, Escape, Up, Down, Left, Right, Backspace, Home, End, PageUp, PageDown, Delete, F1-F12, or a single character")]
+    #[schemars(
+        description = "Key name: Enter, Tab, Escape, Up, Down, Left, Right, Backspace, Home, End, PageUp, PageDown, Delete, F1-F12, or a single character"
+    )]
     key: String,
     #[schemars(description = "Modifier keys: \"ctrl\", \"alt\", \"shift\"")]
     modifiers: Option<Vec<String>>,
@@ -186,10 +192,7 @@ impl CrescentServer {
             .screenshot(&config)
             .map_err(|e| mcp_err(&format!("screenshot failed: {e}")))?;
 
-        let b64 = base64::Engine::encode(
-            &base64::engine::general_purpose::STANDARD,
-            &png_bytes,
-        );
+        let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &png_bytes);
 
         Ok(CallToolResult::success(vec![Content {
             raw: RawContent::Image(RawImageContent {
@@ -245,8 +248,7 @@ impl CrescentServer {
         };
 
         let text = grid.text_content();
-        let json =
-            serde_json::to_string_pretty(&resp).map_err(|e| mcp_err(&e.to_string()))?;
+        let json = serde_json::to_string_pretty(&resp).map_err(|e| mcp_err(&e.to_string()))?;
 
         Ok(CallToolResult::success(vec![
             Content::text(format!("=== Terminal Text ===\n{text}")),
