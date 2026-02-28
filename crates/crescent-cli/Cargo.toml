@@ -1,0 +1,18 @@
+[package]
+name = "crescent-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "CLI for Crescent — Playwright for terminals"
+
+[[bin]]
+name = "crescent"
+path = "src/main.rs"
+
+[dependencies]
+crescent = { path = "../crescent" }
+clap = { version = "4", features = ["derive"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+anyhow = "1"
+serde_json = "1"
+dirs = "5"

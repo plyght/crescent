@@ -96,6 +96,28 @@ struct WaitForParams {
     timeout_ms: Option<u64>,
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+struct WaitIdleParams {
+    #[schemars(description = "The session ID")]
+    session_id: String,
+    #[schemars(description = "How many milliseconds of silence to wait for (default 500)")]
+    quiet_ms: Option<u64>,
+    #[schemars(description = "Timeout in milliseconds (default 10000)")]
+    timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct WaitStableParams {
+    #[schemars(description = "The session ID")]
+    session_id: String,
+    #[schemars(
+        description = "How many milliseconds the visible text must stay unchanged (default 500)"
+    )]
+    stable_ms: Option<u64>,
+    #[schemars(description = "Timeout in milliseconds (default 10000)")]
+    timeout_ms: Option<u64>,
+}
+
 // ---------------------------------------------------------------------------
 // Grid response types (for structured output)
 // ---------------------------------------------------------------------------
@@ -399,6 +421,56 @@ impl CrescentServer {
 
         Ok(CallToolResult::success(vec![Content::text(format!(
             "{{\"matched\": {matched}}}"
+        ))]))
+    }
+
+    #[tool(
+        name = "terminal_wait_idle",
+        description = "Wait until the terminal has stopped producing output for the given quiet period. Like Playwright's networkidle — useful for waiting until a command finishes, a TUI settles, or streaming output completes."
+    )]
+    async fn terminal_wait_idle(
+        &self,
+        Parameters(params): Parameters<WaitIdleParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let session = self
+            .sessions
+            .get(&params.session_id)
+            .await
+            .map_err(|e| mcp_err(&e.to_string()))?;
+
+        let quiet = params.quiet_ms.unwrap_or(500);
+        let idle = session
+            .wait_for_idle(quiet, params.timeout_ms)
+            .await
+            .map_err(|e| mcp_err(&e.to_string()))?;
+
+        Ok(CallToolResult::success(vec![Content::text(format!(
+            "{{\"idle\": {idle}}}"
+        ))]))
+    }
+
+    #[tool(
+        name = "terminal_wait_stable",
+        description = "Wait until the visible terminal text has stopped changing for the given period. Works with TUIs that constantly repaint (cursor blink, status bars) — only detects actual content changes. Use this after sending input to a TUI to wait for the response to finish rendering."
+    )]
+    async fn terminal_wait_stable(
+        &self,
+        Parameters(params): Parameters<WaitStableParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let session = self
+            .sessions
+            .get(&params.session_id)
+            .await
+            .map_err(|e| mcp_err(&e.to_string()))?;
+
+        let stable = params.stable_ms.unwrap_or(500);
+        let result = session
+            .wait_for_stable(stable, params.timeout_ms)
+            .await
+            .map_err(|e| mcp_err(&e.to_string()))?;
+
+        Ok(CallToolResult::success(vec![Content::text(format!(
+            "{{\"stable\": {result}}}"
         ))]))
     }
 

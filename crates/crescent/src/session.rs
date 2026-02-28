@@ -4,11 +4,46 @@ use crate::renderer::{self, RendererConfig};
 use crate::wait;
 use anyhow::{Context, Result};
 use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::io::{Read, Write};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use uuid::Uuid;
+
+#[derive(Clone)]
+pub struct Frame {
+    pub text: String,
+    pub timestamp_ms: u64,
+}
+
+pub struct Recorder {
+    enabled: bool,
+    frames: VecDeque<Frame>,
+    max_frames: usize,
+    last_text: String,
+}
+
+impl Recorder {
+    fn new(max_frames: usize) -> Self {
+        Self {
+            enabled: false,
+            frames: VecDeque::new(),
+            max_frames,
+            last_text: String::new(),
+        }
+    }
+
+    fn capture(&mut self, text: String, timestamp_ms: u64) {
+        if !self.enabled || text == self.last_text {
+            return;
+        }
+        self.last_text = text.clone();
+        if self.frames.len() >= self.max_frames {
+            self.frames.pop_front();
+        }
+        self.frames.push_back(Frame { text, timestamp_ms });
+    }
+}
 
 pub struct Session {
     pub id: String,
@@ -16,9 +51,8 @@ pub struct Session {
     writer: Mutex<Box<dyn Write + Send>>,
     master: Mutex<Box<dyn MasterPty + Send>>,
     alive: Arc<AtomicBool>,
-    /// Epoch ms of last PTY output — reserved for future output-idle wait heuristic
-    #[allow(dead_code)]
     last_output_epoch_ms: Arc<AtomicU64>,
+    recorder: Arc<Mutex<Recorder>>,
 }
 
 impl Session {
@@ -101,6 +135,52 @@ impl Session {
     pub fn is_alive(&self) -> bool {
         self.alive.load(Ordering::Relaxed)
     }
+
+    pub fn last_output_ms(&self) -> u64 {
+        self.last_output_epoch_ms.load(Ordering::Relaxed)
+    }
+
+    pub fn record_start(&self) {
+        if let Ok(mut rec) = self.recorder.lock() {
+            rec.frames.clear();
+            rec.last_text.clear();
+            rec.enabled = true;
+        }
+    }
+
+    pub fn record_stop(&self) -> Vec<Frame> {
+        if let Ok(mut rec) = self.recorder.lock() {
+            rec.enabled = false;
+            rec.frames.drain(..).collect()
+        } else {
+            Vec::new()
+        }
+    }
+
+    pub fn is_recording(&self) -> bool {
+        self.recorder.lock().map(|r| r.enabled).unwrap_or(false)
+    }
+
+    pub fn frame_count(&self) -> usize {
+        self.recorder.lock().map(|r| r.frames.len()).unwrap_or(0)
+    }
+
+    /// Wait until no PTY output has been received for `quiet_ms` milliseconds.
+    /// Best for non-TUI commands (shell, builds, scripts).
+    pub async fn wait_for_idle(&self, quiet_ms: u64, timeout_ms: Option<u64>) -> Result<bool> {
+        wait::wait_for_idle(quiet_ms, timeout_ms, Arc::clone(&self.last_output_epoch_ms)).await
+    }
+
+    /// Wait until the visible text content hasn't changed for `stable_ms`.
+    /// Works with TUIs that constantly repaint — only tracks actual text changes.
+    pub async fn wait_for_stable(&self, stable_ms: u64, timeout_ms: Option<u64>) -> Result<bool> {
+        let parser = Arc::clone(&self.parser);
+        wait::wait_for_stable(stable_ms, timeout_ms, move || {
+            let p = parser.read().map_err(|e| anyhow::anyhow!("{e}"))?;
+            Ok(grid::extract_grid(p.screen()))
+        })
+        .await
+    }
 }
 
 pub struct SessionManager {
@@ -157,6 +237,8 @@ impl SessionManager {
         let alive = Arc::new(AtomicBool::new(true));
         let last_output = Arc::new(AtomicU64::new(0));
 
+        let recorder = Arc::new(Mutex::new(Recorder::new(1000)));
+
         let session = Arc::new(Session {
             id: id.clone(),
             parser: Arc::clone(&parser),
@@ -164,16 +246,17 @@ impl SessionManager {
             master: Mutex::new(pair.master),
             alive: Arc::clone(&alive),
             last_output_epoch_ms: Arc::clone(&last_output),
+            recorder: Arc::clone(&recorder),
         });
 
-        // Background reader thread: reads PTY output, feeds vt100 parser
         {
             let parser = Arc::clone(&parser);
             let alive = Arc::clone(&alive);
             let last_output = Arc::clone(&last_output);
+            let recorder = Arc::clone(&recorder);
             let mut child = child;
             std::thread::spawn(move || {
-                Self::reader_loop(reader, parser, alive, last_output);
+                Self::reader_loop(reader, parser, alive, last_output, recorder);
                 let _ = child.wait();
             });
         }
@@ -187,6 +270,7 @@ impl SessionManager {
         parser: Arc<RwLock<vt100::Parser>>,
         alive: Arc<AtomicBool>,
         last_output: Arc<AtomicU64>,
+        recorder: Arc<Mutex<Recorder>>,
     ) {
         let mut buf = [0u8; 8192];
         loop {
@@ -201,6 +285,15 @@ impl SessionManager {
                         .unwrap_or_default()
                         .as_millis() as u64;
                     last_output.store(now, Ordering::Relaxed);
+
+                    if let Ok(mut rec) = recorder.lock() {
+                        if rec.enabled {
+                            if let Ok(p) = parser.read() {
+                                let g = grid::extract_grid(p.screen());
+                                rec.capture(g.text_content(), now);
+                            }
+                        }
+                    }
                 }
                 Err(_) => break,
             }

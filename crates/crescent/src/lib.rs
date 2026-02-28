@@ -7,4 +7,4 @@ pub mod wait;
 pub use grid::{Cell, CursorPosition, Grid, GridSize, Rgb};
 pub use input::{Key, Modifiers, MouseButton, ScrollDirection};
 pub use renderer::RendererConfig;
-pub use session::{Session, SessionManager};
+pub use session::{Frame, Session, SessionManager};
